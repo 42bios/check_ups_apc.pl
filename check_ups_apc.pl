@@ -1,4 +1,4 @@
-#!/usr/bin/perl
+#!/usr/bin/env perl
 # nagios: -epn
 # icinga: -epn
 #    Copyright (C) 2004 Altinity Limited
@@ -23,7 +23,10 @@
 #    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA    02111-1307    USA
 #
 #
-#
+# 2023-04-05: xinqu (at) v32bis.cc
+#	- normalize various date-strings to "%Y-%m-%d" (sub normalize_date)
+#	- changed #! to '../env perl' for compatibility reasons
+#	- added missing options to usage/help
 # 2019-08-09: Manuel Mahr manuel (at) it-mahr.com
 #	- added on battery time
 #   - added on battery reason
@@ -69,6 +72,7 @@ use feature ":5.10";
 use Net::SNMP;
 use Getopt::Std;
 use Getopt::Long qw(:config no_ignore_case bundling);
+use Time::Piece;
 no warnings "experimental";
 
 # Do we have enough information?
@@ -634,8 +638,39 @@ sub main {
    		$returnstring = $returnstring . " - CURRENT LOAD $output_current_load_wh Wh";
     }
 
+    # normalize dates to YYYY-MM-DD
+    $manufacture_date = normalize_date( $manufacture_date );
+    $battery_date = normalize_date( $battery_date );
+
     $returnstring = $returnstring . "\nFIRMWARE: $firmware - MANUFACTURE DATE: $manufacture_date - LAST BATTERY REPLACE DATE: $battery_date - SERIAL: $serial_number";
 	}
+
+# Date conversion: Print dates always in the same format(YYYY-MM-DD), regardless of
+# the date coming from SNMP output
+sub normalize_date {
+	my $date = $_[0];
+	my $converted;
+
+	# e.g. 12/31/2021
+	if ( $date =~ '\d{2}/\d{2}/\d{4}' ) {
+		my $timer = Time::Piece->strptime( $date, "%m/%d/%Y");
+		$converted = $timer->strftime("%Y-%m-%d");
+	}
+	# e.g. 12/31/21
+	elsif ( $date =~ '\d{2}/\d{2}/\d{2}' ) {
+		my $timer = Time::Piece->strptime( $date, "%m/%d/%y");
+		$converted = $timer->strftime("%Y-%m-%d");
+	}
+	# e.g. 15-Dec-22
+	elsif ( $date =~ '\d{1,2}-[A-Z][a-z]{2}-\d{2}' ) {
+		my $timer = Time::Piece->strptime( $date, "%d-%b-%y");
+		$converted = $timer->strftime("%Y-%m-%d");
+	}
+	# tell me if you encounter different formats
+	else { $converted = $date }
+
+	return $converted;
+}
 
 ####################################################################
 # snmp session stuff
@@ -741,9 +776,11 @@ Options:
          -S     with external sensor (like PowerNet)
          -w     Warning threshold for battery temperature
          -c     Critical threshold for battery temperature
+         -v     SNMP Version
    SNMPv1/2
          -C     Community (default is public)
    SNMPv3
+         -U     Securityname / Username
          -A     Authentication password
          -a     Authentication protocl
          -X     Private password
